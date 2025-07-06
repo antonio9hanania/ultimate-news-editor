@@ -3,6 +3,7 @@ name: Deploy React App to GitHub Pages
 on:
   push:
     branches: [main]
+  workflow_dispatch: # This allows manual triggering
 
 jobs:
   build-and-deploy:
@@ -30,4 +31,3 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./build
-          cname: antonio9hanania.github.io
