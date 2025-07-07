@@ -2346,13 +2346,16 @@ const EmbedBlock: React.FC<{ block: Block; onUpdate: (data: any) => void }> = ({
 
     embedRef.current.innerHTML = "";
 
+    // Normalize X.com URLs to Twitter.com URLs for the widget
+    const normalizedUrl = url.replace(/x\.com/g, "twitter.com");
+
     const blockquote = document.createElement("blockquote");
     blockquote.className = "twitter-tweet";
     blockquote.setAttribute("data-theme", "light");
     blockquote.setAttribute("data-width", "550");
 
     const link = document.createElement("a");
-    link.href = url;
+    link.href = normalizedUrl; // Use normalized URL here
     link.textContent = "Loading tweet...";
     blockquote.appendChild(link);
 
@@ -2446,8 +2449,36 @@ const EmbedBlock: React.FC<{ block: Block; onUpdate: (data: any) => void }> = ({
         embedId: embedData.id,
         fullUrl: embedData.fullUrl,
       });
-      setEditMode(false);
-      setIsLoading(false);
+
+      // Auto-switch to preview mode after embedding
+      setTimeout(() => {
+        setEditMode(false);
+        setIsLoading(false);
+      }, 100);
+    } else {
+      alert(
+        "Unsupported URL. Please use a valid YouTube, X/Twitter, Instagram, or Threads link."
+      );
+    }
+  };
+
+  const handleUpdateUrl = () => {
+    // Update the URL in the block data and switch to preview mode
+    const embedData = getEmbedData(url);
+    if (embedData) {
+      setIsLoading(true);
+      onUpdate({
+        url,
+        embedType: embedData.type,
+        embedId: embedData.id,
+        fullUrl: embedData.fullUrl,
+      });
+
+      // Auto-switch to preview mode after updating
+      setTimeout(() => {
+        setEditMode(false);
+        setIsLoading(false);
+      }, 100);
     } else {
       alert(
         "Unsupported URL. Please use a valid YouTube, Twitter, Instagram, or Threads link."
@@ -2481,94 +2512,128 @@ const EmbedBlock: React.FC<{ block: Block; onUpdate: (data: any) => void }> = ({
     }
   }, [block.data.embedType, block.data.embedId, block.data.fullUrl, editMode]);
 
-  if (editMode || !block.data.embedType) {
-    return (
+  // Sync URL state with block data
+  useEffect(() => {
+    if (block.data.url && block.data.url !== url) {
+      setUrl(block.data.url);
+    }
+  }, [block.data.url]);
+
+  return (
+    <div
+      style={{
+        backgroundColor: "#f9fafb",
+        padding: "0.5rem",
+        borderRadius: "0.5rem",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      {/* Header with mode toggle */}
       <div
         style={{
-          backgroundColor: "#f9fafb",
-          padding: "1rem",
-          borderRadius: "0.5rem",
           display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "0.75rem",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <Globe size={16} style={{ color: "#6b7280" }} />
-          <p style={{ fontSize: "0.875rem", fontWeight: 500 }}>
-            Embed Social Media
+          <p style={{ fontSize: "0.875rem", fontWeight: 500, margin: 0 }}>
+            Social Media Embed
           </p>
         </div>
-        <input
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="Paste a YouTube, Twitter, Instagram, or Threads link..."
-          className="form-input"
-        />
+
+        {/* Only show mode toggle if we have embedded content */}
+        {block.data.embedType && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <button
+              onClick={() => setEditMode(true)}
+              style={{
+                padding: "0.25rem 0.5rem",
+                fontSize: "0.75rem",
+                borderRadius: "0.25rem",
+                background: editMode ? "#dbeafe" : "none",
+                color: editMode ? "#1e40af" : "#6b7280",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => setEditMode(false)}
+              style={{
+                padding: "0.25rem 0.5rem",
+                fontSize: "0.75rem",
+                borderRadius: "0.25rem",
+                background: !editMode ? "#dbeafe" : "none",
+                color: !editMode ? "#1e40af" : "#6b7280",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Preview
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editMode || !block.data.embedType ? (
         <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
+          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
         >
-          <button
-            onClick={handleEmbed}
-            className="button button-primary"
-            disabled={isLoading}
-          >
-            {isLoading ? "Embedding..." : "Embed"}
-          </button>
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="Paste a YouTube, X/Twitter, Instagram, or Threads link..."
+            className="form-input"
+          />
           <div
             style={{
               display: "flex",
+              justifyContent: "space-between",
               alignItems: "center",
-              gap: "0.5rem",
-              color: "#6b7280",
             }}
           >
-            <div title="YouTube">
-              <Youtube size={18} />
-            </div>
-            <div title="Twitter/X">
-              <Twitter size={18} />
-            </div>
-            <div title="Instagram">
-              <Instagram size={18} />
-            </div>
-            <div title="Threads">
-              <Hash size={18} />
+            <button
+              onClick={block.data.embedType ? handleUpdateUrl : handleEmbed}
+              className="button button-primary"
+              disabled={isLoading}
+            >
+              {isLoading
+                ? "Processing..."
+                : block.data.embedType
+                ? "Update URL"
+                : "Embed"}
+            </button>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                color: "#6b7280",
+              }}
+            >
+              <div title="YouTube">
+                <Youtube size={18} />
+              </div>
+              <div title="Twitter/X">
+                <Twitter size={18} />
+              </div>
+              <div title="Instagram">
+                <Instagram size={18} />
+              </div>
+              <div title="Threads">
+                <Hash size={18} />
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="embed-preview-wrapper" style={{ position: "relative" }}>
-      {renderPreview()}
-      <button
-        onClick={() => setEditMode(true)}
-        className="embed-edit-button"
-        style={{
-          position: "absolute",
-          top: "0.5rem",
-          right: "0.5rem",
-          backgroundColor: "white",
-          padding: "0.25rem",
-          borderRadius: "9999px",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          opacity: 0,
-          transition: "opacity 0.2s",
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
-        <Settings size={16} />
-      </button>
-      <style>{`.embed-preview-wrapper:hover .embed-edit-button { opacity: 1; }`}</style>
+      ) : (
+        <div style={{ position: "relative" }}>{renderPreview()}</div>
+      )}
     </div>
   );
 };
