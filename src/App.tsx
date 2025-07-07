@@ -129,6 +129,7 @@ interface EditableBlockProps {
   block: Block;
   onUpdate: (data: any) => void;
   onEnterKey: (e: KeyboardEvent<HTMLElement>) => void;
+  onPaste?: (e: React.ClipboardEvent) => void; // Add this
   className?: string;
   as?: keyof React.JSX.IntrinsicElements;
   style?: React.CSSProperties;
@@ -175,6 +176,7 @@ const UltimateNewsEditor: React.FC = () => {
   ]);
 
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [aiAssistantOpen, setAiAssistantOpen] = useState(true);
   const [activeToolbar, setActiveToolbar] = useState<"tier1" | "tier2">(
@@ -437,6 +439,12 @@ const UltimateNewsEditor: React.FC = () => {
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
+      // Only handle multi-block paste for paragraph blocks
+      const selectedBlock = blocks.find((b) => b.id === selectedBlockId);
+      if (!selectedBlock || selectedBlock.type !== "paragraph") {
+        return; // Let block-specific handlers take over
+      }
+
       e.preventDefault();
 
       // Get both HTML and plain text
@@ -1240,9 +1248,23 @@ const ProductionBlockRenderer = React.memo(
                 .modal-close-button:hover { background-color: #e5e7eb; }
                 .modal-body { display: flex; flex-direction: column; gap: 1rem; }
                 .modal-footer { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.75rem; }
-                .form-input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 1rem; }
-                .form-input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); }
-                
+  .form-input { 
+    width: 100%; 
+    padding: 0.5rem 0.75rem; 
+    border: 1px solid #d1d5db; 
+    border-radius: 0.375rem; 
+    font-size: 1rem;
+    min-width: 0; /* Allow shrinking */
+    max-width: 100%; /* Prevent overflow */
+    box-sizing: border-box; /* Include padding in width */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ... for long text */
+  }                
+  .form-input:focus { 
+    border-color: #3b82f6; 
+    outline: none; 
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); 
+  }                
                 /* Embed Preview */
                 .embed-preview-wrapper:hover .embed-edit-button { opacity: 1; }
             `}</style>
@@ -1929,6 +1951,7 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
   block,
   onUpdate,
   onEnterKey,
+  onPaste,
   className = "",
   as: Component = "div",
   style,
@@ -2044,6 +2067,7 @@ const EditableBlock: React.FC<EditableBlockProps> = ({
     className,
     style: { ...style, outline: "none" },
     onKeyDown: onEnterKey,
+    onPaste: onPaste,
     "data-block-id": block.id,
     ...props,
   };
@@ -2080,7 +2104,13 @@ const ProductionHeadingBlock: React.FC<BlockComponentProps> = ({
   editorDirection,
 }) => {
   const level = Math.max(3, Math.min(4, block.data.level || 3));
-  //const Tag = `h${level}` as keyof React.JSX.IntrinsicElements;
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData("text/plain");
+    // Convert to single line (replace line breaks with spaces)
+    const singleLine = pastedText.replace(/\n/g, " ");
+    document.execCommand("insertText", false, singleLine);
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -2106,6 +2136,7 @@ const ProductionHeadingBlock: React.FC<BlockComponentProps> = ({
         block={block}
         onUpdate={onUpdate}
         onEnterKey={onEnterKey}
+        onPaste={handlePaste}
         className=""
         style={{
           fontWeight: "bold",
@@ -2126,123 +2157,228 @@ const QuoteBlock: React.FC<BlockComponentProps> = ({
   onUpdate,
   onEnterKey,
   editorDirection,
-}) => (
-  <blockquote
-    style={{
-      borderInlineStart: "4px solid #3b82f6",
-      paddingInlineStart: "1rem",
-      paddingBlock: "0.5rem",
-      textAlign: "left",
-    }}
-  >
-    <EditableBlock
-      block={block}
-      onUpdate={(data: any) => onUpdate({ text: data.html })}
-      onEnterKey={onEnterKey}
-      className=""
+}) => {
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData("text/plain");
+    // Insert at cursor position without creating new blocks
+    document.execCommand("insertText", false, pastedText);
+  };
+  return (
+    <blockquote
       style={{
-        fontSize: "1.125rem",
-        color: "#4b5563",
-        fontStyle: "italic",
-        minHeight: "1.5rem",
+        borderInlineStart: "4px solid #3b82f6",
+        paddingInlineStart: "1rem",
+        paddingBlock: "0.5rem",
+        textAlign: "left",
       }}
-      data-placeholder="Enter quote text..."
-    />
-    <EditableBlock
-      block={{ ...block, data: { html: block.data.citation } }}
-      onUpdate={(data: any) => onUpdate({ citation: data.html })}
-      onEnterKey={(e: KeyboardEvent<HTMLElement>) => {
-        if (e.key === "Enter") e.preventDefault();
-      }}
-      as="footer"
-      className=""
-      style={{
-        marginTop: "0.5rem",
-        fontSize: "0.875rem",
-        color: "#6b7280",
-        fontStyle: "normal",
-        minHeight: "1.25rem",
-      }}
-      data-placeholder="— Source"
-    />
-  </blockquote>
-);
+    >
+      <EditableBlock
+        block={block}
+        onUpdate={(data: any) => onUpdate({ text: data.html })}
+        onEnterKey={onEnterKey}
+        className=""
+        style={{
+          fontSize: "1.125rem",
+          color: "#4b5563",
+          fontStyle: "italic",
+          minHeight: "1.5rem",
+        }}
+        data-placeholder="Enter quote text..."
+      />
+      <EditableBlock
+        block={{ ...block, data: { html: block.data.citation } }}
+        onUpdate={(data: any) => onUpdate({ citation: data.html })}
+        onEnterKey={(e: KeyboardEvent<HTMLElement>) => {
+          if (e.key === "Enter") e.preventDefault();
+        }}
+        as="footer"
+        className=""
+        style={{
+          marginTop: "0.5rem",
+          fontSize: "0.875rem",
+          color: "#6b7280",
+          fontStyle: "normal",
+          minHeight: "1.25rem",
+        }}
+        data-placeholder="— Source"
+      />
+    </blockquote>
+  );
+};
 
 const ImageBlock: React.FC<{ block: Block; onUpdate: (data: any) => void }> = ({
   block,
   onUpdate,
 }) => {
+  const [editMode, setEditMode] = useState(!block.data.url);
+  const [url, setUrl] = useState(block.data.url || "");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const handleUrlChange = (e: ChangeEvent<HTMLInputElement>) =>
-    onUpdate({ url: e.target.value });
+
+  const handleUrlChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setUrl(e.target.value);
+  };
+
+  const handleUrlSubmit = () => {
+    onUpdate({ url });
+    // Auto-switch to preview mode after setting URL
+    setTimeout(() => {
+      setEditMode(false);
+    }, 100);
+  };
+
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const reader = new FileReader();
-      reader.onload = (loadEvent) =>
-        onUpdate({ url: loadEvent.target?.result as string });
+      reader.onload = (loadEvent) => {
+        const imageUrl = loadEvent.target?.result as string;
+        onUpdate({ url: imageUrl });
+        setUrl(imageUrl);
+        // Auto-switch to preview mode after file upload
+        setTimeout(() => {
+          setEditMode(false);
+        }, 100);
+      };
       reader.readAsDataURL(e.target.files[0]);
     }
   };
-  if (!block.data.url) {
-    return (
+
+  // Sync URL state with block data
+  useEffect(() => {
+    if (block.data.url && block.data.url !== url) {
+      setUrl(block.data.url);
+    }
+  }, [block.data.url]);
+
+  return (
+    <div
+      style={{
+        backgroundColor: "#f9fafb",
+        padding: "0.5rem",
+        borderRadius: "0.5rem",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      {/* Header with mode toggle */}
       <div
         style={{
-          backgroundColor: "#f9fafb",
-          padding: "1rem",
-          borderRadius: "0.5rem",
-          border: "2px dashed #e5e7eb",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "0.75rem",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <Image size={16} style={{ color: "#6b7280" }} />
+          <p style={{ fontSize: "0.875rem", fontWeight: 500, margin: 0 }}>
+            Image
+          </p>
+        </div>
+
+        {/* Only show mode toggle if we have an image */}
+        {block.data.url && (
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <button
+              onClick={() => setEditMode(true)}
+              style={{
+                padding: "0.25rem 0.5rem",
+                fontSize: "0.75rem",
+                borderRadius: "0.25rem",
+                background: editMode ? "#dbeafe" : "none",
+                color: editMode ? "#1e40af" : "#6b7280",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Edit
+            </button>
+            <button
+              onClick={() => setEditMode(false)}
+              style={{
+                padding: "0.25rem 0.5rem",
+                fontSize: "0.75rem",
+                borderRadius: "0.25rem",
+                background: !editMode ? "#dbeafe" : "none",
+                color: !editMode ? "#1e40af" : "#6b7280",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Preview
+            </button>
+          </div>
+        )}
+      </div>
+
+      {editMode || !block.data.url ? (
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
           <input
             type="text"
             placeholder="Paste image URL"
+            value={url}
             onChange={handleUrlChange}
             className="form-input"
-            style={{ flex: 1 }}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              maxWidth: "100%",
+              boxSizing: "border-box",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
           />
-          <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>OR</span>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="button button-secondary"
-          >
-            Upload
-          </button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            style={{ display: "none" }}
-            accept="image/*"
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <button onClick={handleUrlSubmit} className="button button-primary">
+              {block.data.url ? "Update Image" : "Set Image"}
+            </button>
+            <span style={{ fontSize: "0.875rem", color: "#6b7280" }}>OR</span>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="button button-secondary"
+            >
+              Upload
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              style={{ display: "none" }}
+              accept="image/*"
+            />
+          </div>
         </div>
-      </div>
-    );
-  }
-  return (
-    <figure style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-      <img
-        src={block.data.url}
-        alt={block.data.caption || ""}
-        style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }}
-      />
-      <input
-        type="text"
-        value={block.data.caption || ""}
-        onChange={(e) => onUpdate({ caption: e.target.value })}
-        placeholder="Add a caption..."
-        style={{
-          width: "100%",
-          textAlign: "center",
-          fontSize: "0.875rem",
-          color: "#6b7280",
-          background: "transparent",
-          outline: "none",
-          border: "none",
-          padding: "0.25rem",
-        }}
-      />
-    </figure>
+      ) : (
+        <figure
+          style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
+        >
+          <img
+            src={block.data.url}
+            alt={block.data.caption || ""}
+            style={{ width: "100%", height: "auto", borderRadius: "0.5rem" }}
+          />
+          <input
+            type="text"
+            value={block.data.caption || ""}
+            onChange={(e) => onUpdate({ caption: e.target.value })}
+            placeholder="Add a caption..."
+            style={{
+              width: "100%",
+              textAlign: "center",
+              fontSize: "0.875rem",
+              color: "#6b7280",
+              background: "transparent",
+              outline: "none",
+              border: "none",
+              padding: "0.25rem",
+              boxSizing: "border-box",
+            }}
+          />
+        </figure>
+      )}
+    </div>
   );
 };
 
@@ -2589,6 +2725,15 @@ const EmbedBlock: React.FC<{ block: Block; onUpdate: (data: any) => void }> = ({
             onChange={(e) => setUrl(e.target.value)}
             placeholder="Paste a YouTube, X/Twitter, Instagram, or Threads link..."
             className="form-input"
+            style={{
+              width: "100%",
+              minWidth: 0, // Allow shrinking
+              maxWidth: "100%", // Prevent overflow
+              boxSizing: "border-box", // Include padding in width calculation
+              overflow: "hidden", // Hide overflow
+              textOverflow: "ellipsis", // Show ... when text is too long
+              whiteSpace: "nowrap", // Prevent line wrapping
+            }}
           />
           <div
             style={{
@@ -2662,6 +2807,16 @@ const ListBlock: React.FC<BlockComponentProps> = ({
     }, 0);
   };
 
+  const addMultipleItems = (afterIndex: number, lines: string[]) => {
+    const newItems = [...items];
+    // Replace current item with first line, add rest as new items
+    newItems[afterIndex] = lines[0];
+    for (let i = 1; i < lines.length; i++) {
+      newItems.splice(afterIndex + i, 0, lines[i]);
+    }
+    onUpdate({ items: newItems });
+  };
+
   const removeItem = (index: number) => {
     if (items.length > 1) {
       const newItems = items.filter((_: string, i: number) => i !== index);
@@ -2712,6 +2867,20 @@ const ListBlock: React.FC<BlockComponentProps> = ({
         e.preventDefault();
         removeItem(index);
       }
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent, index: number) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData("text/plain");
+    const lines = pastedText.split("\n").filter((line) => line.trim());
+
+    if (lines.length > 1) {
+      // Multiple lines - add as new list items
+      addMultipleItems(index, lines);
+    } else {
+      // Single line - normal paste at cursor
+      document.execCommand("insertText", false, pastedText);
     }
   };
 
@@ -2781,6 +2950,7 @@ const ListBlock: React.FC<BlockComponentProps> = ({
                 index={index}
                 onUpdate={(content) => updateItem(index, content)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
+                onPaste={(e) => handlePaste(e, index)}
                 placeholder={`List item ${index + 1}`}
               />
             </li>
@@ -2807,6 +2977,7 @@ const ListBlock: React.FC<BlockComponentProps> = ({
                 index={index}
                 onUpdate={(content) => updateItem(index, content)}
                 onKeyDown={(e) => handleKeyDown(e, index)}
+                onPaste={(e) => handlePaste(e, index)}
                 placeholder={`List item ${index + 1}`}
               />
             </li>
@@ -2817,14 +2988,14 @@ const ListBlock: React.FC<BlockComponentProps> = ({
   );
 };
 
-// Add this ListItem component before the ListBlock
 const ListItem: React.FC<{
   content: string;
   index: number;
   onUpdate: (content: string) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
+  onPaste: (e: React.ClipboardEvent) => void; // Add this
   placeholder: string;
-}> = ({ content, index, onUpdate, onKeyDown, placeholder }) => {
+}> = ({ content, index, onUpdate, onKeyDown, onPaste, placeholder }) => {
   const itemRef = useRef<HTMLDivElement>(null);
   const isComposingRef = useRef(false);
   const isTypingRef = useRef(false);
@@ -2936,10 +3107,12 @@ const ListItem: React.FC<{
         whiteSpace: "pre-wrap",
       }}
       onKeyDown={onKeyDown}
+      onPaste={onPaste} // Add this line
       data-placeholder={placeholder}
     />
   );
 };
+
 // Add this new component before TableBlock
 const TableCell: React.FC<{
   content: string;
