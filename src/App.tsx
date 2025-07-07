@@ -2581,52 +2581,298 @@ const ListBlock: React.FC<BlockComponentProps> = ({
   const items = block.data.items || [""];
   const isOrdered = block.data.type === "ordered";
 
+  const addItem = (afterIndex: number) => {
+    const newItems = [...items];
+    newItems.splice(afterIndex + 1, 0, "");
+    onUpdate({ items: newItems });
+
+    // Focus the new item
+    setTimeout(() => {
+      const newItemElement = document.querySelector(
+        `[data-list-item="${afterIndex + 1}"]`
+      ) as HTMLElement;
+      if (newItemElement) {
+        newItemElement.focus();
+      }
+    }, 0);
+  };
+
+  const removeItem = (index: number) => {
+    if (items.length > 1) {
+      const newItems = items.filter((_: string, i: number) => i !== index);
+      onUpdate({ items: newItems });
+
+      // Focus previous item or next item
+      setTimeout(() => {
+        const focusIndex = Math.max(0, index - 1);
+        const focusElement = document.querySelector(
+          `[data-list-item="${focusIndex}"]`
+        ) as HTMLElement;
+        if (focusElement) {
+          focusElement.focus();
+        }
+      }, 0);
+    }
+  };
+
+  const updateItem = (index: number, content: string) => {
+    const newItems = [...items];
+    newItems[index] = content;
+    onUpdate({ items: newItems });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      const currentElement = e.currentTarget as HTMLElement;
+      const currentContent = currentElement.textContent || "";
+
+      // Save current content first
+      updateItem(index, currentContent);
+
+      // If current item is empty and it's not the first item, remove it
+      if (currentContent.trim() === "" && items.length > 1) {
+        removeItem(index);
+      } else {
+        // Add new item after current
+        addItem(index);
+      }
+    } else if (e.key === "Backspace") {
+      const currentElement = e.currentTarget as HTMLElement;
+      const currentContent = currentElement.textContent || "";
+
+      // If backspace at the beginning of an empty item, remove it
+      if (currentContent.trim() === "" && items.length > 1) {
+        e.preventDefault();
+        removeItem(index);
+      }
+    }
+  };
+
   return (
-    <div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        <button onClick={() => onUpdate({ type: "unordered" })}>
-          • Bullet
+    <div style={{ position: "relative" }}>
+      {/* List type controls */}
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          marginBottom: "0.75rem",
+          padding: "0.5rem",
+          backgroundColor: "#f9fafb",
+          borderRadius: "0.375rem",
+          border: "1px solid #e5e7eb",
+        }}
+      >
+        <button
+          onClick={() => onUpdate({ type: "unordered" })}
+          style={{
+            padding: "0.25rem 0.75rem",
+            fontSize: "0.875rem",
+            borderRadius: "0.25rem",
+            border: "1px solid #d1d5db",
+            backgroundColor: !isOrdered ? "#dbeafe" : "white",
+            color: !isOrdered ? "#1e40af" : "#374151",
+            cursor: "pointer",
+          }}
+        >
+          • Bullet List
         </button>
-        <button onClick={() => onUpdate({ type: "ordered" })}>
-          1. Numbered
+        <button
+          onClick={() => onUpdate({ type: "ordered" })}
+          style={{
+            padding: "0.25rem 0.75rem",
+            fontSize: "0.875rem",
+            borderRadius: "0.25rem",
+            border: "1px solid #d1d5db",
+            backgroundColor: isOrdered ? "#dbeafe" : "white",
+            color: isOrdered ? "#1e40af" : "#374151",
+            cursor: "pointer",
+          }}
+        >
+          1. Numbered List
         </button>
       </div>
+
+      {/* List items */}
       {isOrdered ? (
-        <ol>
+        <ol
+          style={{
+            paddingLeft: "1.5rem",
+            margin: 0,
+            listStyleType: "decimal",
+          }}
+        >
           {items.map((item: string, index: number) => (
-            <li key={index}>
-              <div
-                contentEditable
-                suppressContentEditableWarning
-                onBlur={(e) => {
-                  const newItems = [...items];
-                  newItems[index] = e.currentTarget.textContent || "";
-                  onUpdate({ items: newItems });
-                }}
-                dangerouslySetInnerHTML={{ __html: item }}
+            <li
+              key={index}
+              style={{
+                marginBottom: "0.5rem",
+                lineHeight: "1.6",
+              }}
+            >
+              <ListItem
+                content={item}
+                index={index}
+                onUpdate={(content) => updateItem(index, content)}
+                onKeyDown={(e) => handleKeyDown(e, index)}
+                placeholder={`List item ${index + 1}`}
               />
             </li>
           ))}
         </ol>
       ) : (
-        <ul>
+        <ul
+          style={{
+            paddingLeft: "1.5rem",
+            margin: 0,
+            listStyleType: "disc",
+          }}
+        >
           {items.map((item: string, index: number) => (
-            <li key={index}>
-              <div
-                contentEditable
-                suppressContentEditableWarning
-                onBlur={(e) => {
-                  const newItems = [...items];
-                  newItems[index] = e.currentTarget.textContent || "";
-                  onUpdate({ items: newItems });
-                }}
-                dangerouslySetInnerHTML={{ __html: item }}
+            <li
+              key={index}
+              style={{
+                marginBottom: "0.5rem",
+                lineHeight: "1.6",
+              }}
+            >
+              <ListItem
+                content={item}
+                index={index}
+                onUpdate={(content) => updateItem(index, content)}
+                onKeyDown={(e) => handleKeyDown(e, index)}
+                placeholder={`List item ${index + 1}`}
               />
             </li>
           ))}
         </ul>
       )}
     </div>
+  );
+};
+
+// Add this ListItem component before the ListBlock
+const ListItem: React.FC<{
+  content: string;
+  index: number;
+  onUpdate: (content: string) => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
+  placeholder: string;
+}> = ({ content, index, onUpdate, onKeyDown, placeholder }) => {
+  const itemRef = useRef<HTMLDivElement>(null);
+  const isComposingRef = useRef(false);
+  const isTypingRef = useRef(false);
+  const lastContentRef = useRef<string>(content);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleInput = useCallback(() => {
+    if (isComposingRef.current || !itemRef.current) return;
+
+    isTypingRef.current = true;
+    const currentContent = itemRef.current.textContent || "";
+    lastContentRef.current = currentContent;
+
+    // Clear existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Debounced update
+    timeoutRef.current = setTimeout(() => {
+      onUpdate(currentContent);
+      isTypingRef.current = false;
+      timeoutRef.current = null;
+    }, 300);
+  }, [onUpdate]);
+
+  const handleBlur = useCallback(() => {
+    if (itemRef.current) {
+      // Clear any pending timeout since we're saving immediately
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
+      const currentContent = itemRef.current.textContent || "";
+      lastContentRef.current = currentContent;
+      onUpdate(currentContent);
+      isTypingRef.current = false;
+    }
+  }, [onUpdate]);
+
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
+
+  const handleCompositionEnd = useCallback(() => {
+    isComposingRef.current = false;
+    if (itemRef.current) {
+      const currentContent = itemRef.current.textContent || "";
+      lastContentRef.current = currentContent;
+      onUpdate(currentContent);
+    }
+  }, [onUpdate]);
+
+  // Only update textContent when content changes from outside AND user is not typing
+  useEffect(() => {
+    if (
+      itemRef.current &&
+      content !== lastContentRef.current &&
+      !isTypingRef.current &&
+      !isComposingRef.current &&
+      document.activeElement !== itemRef.current
+    ) {
+      itemRef.current.textContent = content;
+      lastContentRef.current = content;
+    }
+  }, [content]);
+
+  // Initial content setup
+  useEffect(() => {
+    if (itemRef.current && !itemRef.current.textContent && content) {
+      itemRef.current.textContent = content;
+      lastContentRef.current = content;
+    }
+  }, []);
+
+  useEffect(() => {
+    const element = itemRef.current;
+    if (!element) return;
+
+    element.addEventListener("input", handleInput);
+    element.addEventListener("blur", handleBlur);
+    element.addEventListener("compositionstart", handleCompositionStart);
+    element.addEventListener("compositionend", handleCompositionEnd);
+
+    return () => {
+      element.removeEventListener("input", handleInput);
+      element.removeEventListener("blur", handleBlur);
+      element.removeEventListener("compositionstart", handleCompositionStart);
+      element.removeEventListener("compositionend", handleCompositionEnd);
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [handleInput, handleBlur, handleCompositionStart, handleCompositionEnd]);
+
+  return (
+    <div
+      ref={itemRef}
+      contentEditable
+      suppressContentEditableWarning
+      data-list-item={index}
+      style={{
+        outline: "none",
+        minHeight: "1.5rem",
+        wordWrap: "break-word",
+        whiteSpace: "pre-wrap",
+      }}
+      onKeyDown={onKeyDown}
+      data-placeholder={placeholder}
+    />
   );
 };
 // Add this new component before TableBlock
